@@ -46,6 +46,8 @@ AVoyagerSky::AVoyagerSky()
 	Sun->VolumetricScatteringIntensity = 1.2f;
 	// Cloud shadow map: the default 150 km footprint wastes resolution on an 8 km world. Measured on Terra:
 	// cloud shadow + sky AO 3.63 ms -> 0.69 ms with these and the sky light settings below.
+	// Grass casts no shadow-map shadows; screen-space contact shadows give it micro-shadowing for free.
+	Sun->ContactShadowLength = 0.06f;
 	Sun->CloudShadowExtent = 12.f;
 	Sun->CloudShadowMapResolutionScale = 0.5f;
 	Sun->CloudShadowRaySampleCountScale = 0.5f;

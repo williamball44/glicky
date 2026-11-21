@@ -19,8 +19,16 @@ GRASS_VECTORS = {
     "DryColor": (0.72, 0.66, 0.32),
     "GustColor": (0.85, 0.9, 0.55),
     "WindDir": (1.0, 0.35, 0.0),
+    "PlayerPos": (0.0, 0.0, -100000.0),   # world cm; set by the player each frame (step 5); far away until then
 }
-GRASS_SCALARS = {"GrassEndDistance": 120.0, "WindStrength": 0.45, "WindSpeed": 1.3, "Wind": 1.0}
+GRASS_SCALARS = {
+    "GrassEndDistance": 80.0,   # m: blades shrink away by here (gradient culling); the ground carpet takes over
+    "WindStrength": 0.45, "WindSpeed": 1.3, "Wind": 1.0,
+    "GustScale": 0.02,          # gust texture tiles every 50 m
+    "GustScroll": 0.06,         # texture widths per second at WindSpeed 1
+    "ClumpSize": 0.9,           # m, Voronoi clump size
+    "PlayerRadius": 1.5,        # m, grass push radius around the player
+}
 
 if eal.does_asset_exist(MPC):
     mpc = eal.load_asset(MPC)

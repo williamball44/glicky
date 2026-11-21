@@ -165,6 +165,143 @@ UStaticMesh* UVoyagerGrassBuilder::BuildGrassClump(const FString& AssetPath, UMa
 	return Mesh;
 }
 
+namespace
+{
+	struct FPatchBlade
+	{
+		FVector2f Root;
+		float Height;
+		float Rand;
+		FVector2f Facing;
+	};
+
+	/** Appends one LOD's blades (straight strips) to a mesh description. */
+	void WritePatchLOD(FMeshDescription& MD, const TArray<FPatchBlade>& Blades, int32 Stride, int32 Segs, float HalfWidth)
+	{
+		FStaticMeshAttributes Attributes(MD);
+		Attributes.Register();
+		TVertexAttributesRef<FVector3f> Positions = Attributes.GetVertexPositions();
+		TVertexInstanceAttributesRef<FVector3f> Normals = Attributes.GetVertexInstanceNormals();
+		TVertexInstanceAttributesRef<FVector2f> UVs = Attributes.GetVertexInstanceUVs();
+		UVs.SetNumChannels(4);
+		const FPolygonGroupID Group = MD.CreatePolygonGroup();
+		Attributes.GetPolygonGroupMaterialSlotNames()[Group] = TEXT("Grass");
+
+		for (int32 B = 0; B < Blades.Num(); B += Stride)
+		{
+			const FPatchBlade& Blade = Blades[B];
+			const FVector3f Side(-Blade.Facing.Y, Blade.Facing.X, 0.f);
+			const FVector3f Normal(Blade.Facing.X, Blade.Facing.Y, 0.f);
+			TArray<FVertexInstanceID, TInlineAllocator<16>> Row;
+			for (int32 I = 0; I <= Segs; ++I)
+			{
+				const float T = static_cast<float>(I) / Segs;
+				const float Width = I == Segs ? 0.f : HalfWidth * (1.f - T * T * 0.85f);
+				const int32 Count = I == Segs ? 1 : 2;
+				for (int32 S = 0; S < Count; ++S)
+				{
+					const float Across = Count == 1 ? 0.f : (S == 0 ? -1.f : 1.f);
+					const FVertexID V = MD.CreateVertex();
+					Positions[V] = FVector3f(Blade.Root.X, Blade.Root.Y, T * Blade.Height) + Side * Across * Width;
+					const FVertexInstanceID VI = MD.CreateVertexInstance(V);
+					Normals[VI] = Normal; // the material computes the real (bent, rounded) normal
+					UVs.Set(VI, 0, FVector2f(Across * 0.5f + 0.5f, T));
+					UVs.Set(VI, 1, Blade.Root);
+					UVs.Set(VI, 2, FVector2f(Blade.Height, Blade.Rand));
+					UVs.Set(VI, 3, Blade.Facing);
+					Row.Add(VI);
+				}
+			}
+			for (int32 S = 0; S < Segs - 1; ++S)
+			{
+				const FVertexInstanceID L0 = Row[S * 2], R0 = Row[S * 2 + 1], L1 = Row[S * 2 + 2], R1 = Row[S * 2 + 3];
+				MD.CreateTriangle(Group, { L0, L1, R0 });
+				MD.CreateTriangle(Group, { R0, L1, R1 });
+			}
+			const int32 Last = (Segs - 1) * 2;
+			MD.CreateTriangle(Group, { Row[Last], Row[Last + 2], Row[Last + 1] });
+		}
+	}
+}
+
+UStaticMesh* UVoyagerGrassBuilder::BuildGrassPatch(const FString& AssetPath, UMaterialInterface* Material, int32 Seed,
+	int32 BladeCount, float PatchSize, float BaseHeight, float HalfWidth, bool bNanite)
+{
+	const FString PackageName = FPackageName::ObjectPathToPackageName(AssetPath);
+	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
+	UPackage* Package = CreatePackage(*PackageName);
+	Package->FullyLoad();
+
+	UStaticMesh* Mesh = FindObject<UStaticMesh>(Package, *AssetName);
+	const bool bNew = Mesh == nullptr;
+	if (bNew)
+	{
+		Mesh = NewObject<UStaticMesh>(Package, *AssetName, RF_Public | RF_Standalone | RF_Transactional);
+	}
+	Mesh->Modify();
+	Mesh->GetStaticMaterials().Reset();
+	Mesh->GetStaticMaterials().Add(FStaticMaterial(Material, TEXT("Grass"), TEXT("Grass")));
+
+	// Stratified roots: one blade per cell of a jittered grid, shuffled so LODs that keep every Nth blade
+	// still cover the patch evenly.
+	FRng Rng(static_cast<uint32>(Seed) * 2654435761u + 91u);
+	const int32 Grid = FMath::CeilToInt(FMath::Sqrt(static_cast<float>(BladeCount)));
+	const float Cell = PatchSize / Grid;
+	TArray<FPatchBlade> Blades;
+	for (int32 Y = 0; Y < Grid; ++Y)
+	{
+		for (int32 X = 0; X < Grid; ++X)
+		{
+			FPatchBlade Blade;
+			Blade.Root = FVector2f(-PatchSize * 0.5f + (X + Rng.Next()) * Cell, -PatchSize * 0.5f + (Y + Rng.Next()) * Cell);
+			Blade.Height = BaseHeight;
+			Blade.Rand = Rng.Next();
+			const float A = Rng.Next() * UE_TWO_PI;
+			Blade.Facing = FVector2f(FMath::Cos(A), FMath::Sin(A));
+			Blades.Add(Blade);
+		}
+	}
+	for (int32 I = Blades.Num() - 1; I > 0; --I)
+	{
+		Blades.Swap(I, FMath::Min(static_cast<int32>(Rng.Next() * (I + 1)), I));
+	}
+	Blades.SetNum(FMath::Min(BladeCount, Blades.Num()));
+
+	struct FLodSpec { int32 Stride; int32 Segs; float WidthMul; float ScreenSize; };
+	const TArray<FLodSpec> Lods = bNanite
+		? TArray<FLodSpec>{ { 1, 6, 1.f, 1.f } }
+		: TArray<FLodSpec>{ { 1, 6, 1.f, 1.f }, { 3, 3, 1.8f, 0.12f }, { 8, 1, 3.0f, 0.04f } };
+
+	Mesh->SetNumSourceModels(Lods.Num());
+	Mesh->SetAutoComputeLODScreenSize(false);
+	for (int32 L = 0; L < Lods.Num(); ++L)
+	{
+		FStaticMeshSourceModel& Source = Mesh->GetSourceModel(L);
+		Source.BuildSettings.bRecomputeNormals = false;
+		Source.BuildSettings.bRecomputeTangents = true;
+		Source.BuildSettings.bGenerateLightmapUVs = false;
+		Source.BuildSettings.bRemoveDegenerates = false;
+		Source.ScreenSize.Default = Lods[L].ScreenSize;
+		FMeshDescription* MD = Mesh->CreateMeshDescription(L);
+		WritePatchLOD(*MD, Blades, Lods[L].Stride, Lods[L].Segs, HalfWidth * Lods[L].WidthMul);
+		Mesh->CommitMeshDescription(L);
+	}
+
+	FMeshNaniteSettings Nanite = Mesh->GetNaniteSettings();
+	Nanite.bEnabled = bNanite;
+	Nanite.ShapePreservation = ENaniteShapePreservation::Voxelize;
+	Mesh->SetNaniteSettings(Nanite);
+	Mesh->Build(false);
+	Mesh->PostEditChange();
+	Mesh->MarkPackageDirty();
+	if (bNew)
+	{
+		FAssetRegistryModule::AssetCreated(Mesh);
+	}
+	UE_LOG(LogVoyagerEditor, Display, TEXT("Grass patch %s: %d blades, %d LODs, Nanite %d"), *AssetPath, Blades.Num(), Lods.Num(), bNanite ? 1 : 0);
+	return Mesh;
+}
+
 void UVoyagerGrassBuilder::BuildLandscapeNanite()
 {
 	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
