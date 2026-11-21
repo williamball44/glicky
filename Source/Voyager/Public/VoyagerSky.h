@@ -55,6 +55,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyager|Sky|Lights")
 	float MoonIlluminance = 0.35f;
 
+	/**
+	 * The sun and moon turn in steps of this many local minutes instead of every frame. Any rotation of a
+	 * directional light invalidates its whole virtual shadow map cache; per-frame turning cost 1.7 ms of shadow
+	 * rendering on Terra. 1 minute = 0.25 degrees, too small to see.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyager|Sky|Lights", meta = (ClampMin = "0"))
+	float LightStepMinutes = 1.f;
+
 	/** Hour of peak morning mist, and how long (std. dev., hours) it lasts. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyager|Sky|Fog")
 	float MistHour = 6.8f;
@@ -113,6 +121,7 @@ private:
 	float ResolveHour(float DeltaSeconds);
 
 	float CurrentHour = 7.6f;
+	float LightHour = -100.f; // hour the sun/moon rotation was last applied for
 	FVector SunDirection = FVector::UpVector;
 	float DayAmount = 1.f;
 };

@@ -107,6 +107,7 @@ void AVoyagerSky::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 	ApplyPlanet();
+	LightHour = -100.f; // an edited hour always moves the lights
 	ApplyHour(EditorHour);
 }
 
@@ -174,7 +175,6 @@ void AVoyagerSky::ApplyHour(float Hour)
 	// Sun: the atmosphere colours it; we only fade it out below the horizon.
 	const FLinearColor Tint = Planet ? Planet->SunTint : FLinearColor::White;
 	const float SunI = SunIlluminance * Smooth01(-0.06f, 0.04f, E);
-	Sun->SetWorldRotation((-SunDirection).Rotation());
 	Sun->SetIntensity(SunI);
 	Sun->SetLightColor(Tint);
 	Sun->SetVisibility(SunI > 0.f);
@@ -182,7 +182,16 @@ void AVoyagerSky::ApplyHour(float Hour)
 	// Moon roughly opposite the sun, offset so it isn't on the same arc.
 	const FVector MoonDir = FQuat(FVector::XAxisVector, FMath::DegreesToRadians(25.f)).RotateVector(-SunDirection);
 	const float MoonI = MoonIlluminance * Smooth01(0.f, 0.25f, MoonDir.Z) * (1.f - Smooth01(-0.1f, 0.05f, E));
-	Moon->SetWorldRotation((-MoonDir).Rotation());
+
+	// Turn the lights only in LightStepMinutes steps so the virtual shadow map cache survives between steps.
+	float Since = FMath::Abs(Hour - LightHour);
+	Since = FMath::Min(Since, 24.f - Since); // across midnight
+	if (LightHour < -50.f || Since * 60.f >= LightStepMinutes)
+	{
+		LightHour = Hour;
+		Sun->SetWorldRotation((-SunDirection).Rotation());
+		Moon->SetWorldRotation((-MoonDir).Rotation());
+	}
 	Moon->SetIntensity(MoonI);
 	Moon->SetVisibility(MoonI > 0.f);
 

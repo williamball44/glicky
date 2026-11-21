@@ -93,7 +93,9 @@ def branch(lo, hi, meshes, label):
         d.set_editor_property("static_mesh", eal.load_asset(f"/Game/Voyager/Grass/{name}"))
         d.set_editor_property("instance_start_cull_distance", int(START_CULL))
         d.set_editor_property("instance_end_cull_distance", int(END_CULL))
-        d.set_editor_property("cast_shadow", True)
+        # Only medium/tall clumps cast into the virtual shadow map. Short clumps (most instances) rely on contact
+        # shadows and the material's root AO: in PIE, all-grass shadow casting cost 3.5 ms of VSM rendering.
+        d.set_editor_property("cast_shadow", not name.startswith("SM_GrassClump_S"))
         d.set_editor_property("cast_contact_shadow", True)
         d.set_editor_property("world_position_offset_disable_distance", 3000)  # static beyond 30 m: VSM can cache it
         d.set_editor_property("visible_in_ray_tracing", False)
