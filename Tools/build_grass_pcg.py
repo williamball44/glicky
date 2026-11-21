@@ -8,12 +8,12 @@ Patches are not rotated: clumping is computed in world space in the shader, so i
 Grass casts no shadow-map shadows (contact shadows on the sun instead).
 Runtime generation: 64 m cells within 95 m of the camera; every blade has shrunk away by GrassEndDistance (80 m).
 
-Set GRASS_NANITE = True before exec'ing this file to use the Nanite patch set (A/B):
-    python Tools/ue_exec.py -c "GRASS_NANITE = True; exec(open(unreal.Paths.project_dir() + 'Tools/build_grass_pcg.py').read())"
+Set GRASS_NANITE = False before exec'ing this file to use the classic-LOD patch set (A/B):
+    python Tools/ue_exec.py -c "GRASS_NANITE = False; exec(open(unreal.Paths.project_dir() + 'Tools/build_grass_pcg.py').read())"
 Re-run to rebuild: the graph is recreated and the volume regenerated."""
 import unreal
 
-NANITE = globals().get("GRASS_NANITE", False)
+NANITE = globals().get("GRASS_NANITE", True)   # Nanite won the A/B; False needs build_grass.py run with GRASS_CLASSIC = True
 GRAPH = "/Game/Voyager/Grass/PCG_TerraGrass"
 MASK = "/Game/Voyager/Textures/T_TerraGrassMask"
 PATCHES = [f"SM_GrassPatch{'N' if NANITE else ''}_{i}" for i in range(6)]
