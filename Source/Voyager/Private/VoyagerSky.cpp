@@ -44,6 +44,11 @@ AVoyagerSky::AVoyagerSky()
 	Sun->LightSourceAngle = 0.75f; // slightly larger, softer sun for the hazy golden look
 	Sun->AtmosphereSunDiskColorScale = FLinearColor(1.f, 0.93f, 0.82f);
 	Sun->VolumetricScatteringIntensity = 1.2f;
+	// Cloud shadow map: the default 150 km footprint wastes resolution on an 8 km world. Measured on Terra:
+	// cloud shadow + sky AO 3.63 ms -> 0.69 ms with these and the sky light settings below.
+	Sun->CloudShadowExtent = 12.f;
+	Sun->CloudShadowMapResolutionScale = 0.5f;
+	Sun->CloudShadowRaySampleCountScale = 0.5f;
 
 	Moon = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("Moon"));
 	Moon->SetupAttachment(Root);
@@ -54,6 +59,7 @@ AVoyagerSky::AVoyagerSky()
 	Moon->AtmosphereSunLightIndex = 1;
 	Moon->LightSourceAngle = 0.55f;
 	Moon->AtmosphereSunDiskColorScale = FLinearColor(0.3f, 0.32f, 0.36f);
+	Moon->bCastCloudShadows = false; // a second cloud shadow map isn't worth it for moonlight
 
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("SkyAtmosphere"));
 	Atmosphere->SetupAttachment(Root);
@@ -63,10 +69,12 @@ AVoyagerSky::AVoyagerSky()
 	SkyLight->SetMobility(EComponentMobility::Movable);
 	SkyLight->bRealTimeCapture = true;
 	SkyLight->bCloudAmbientOcclusion = true;
+	SkyLight->CloudAmbientOcclusionExtent = 12.f;
+	SkyLight->CloudAmbientOcclusionMapResolutionScale = 0.5f;
 
 	HeightFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("HeightFog"));
 	HeightFog->SetupAttachment(Root);
-	HeightFog->FogDensity = 0.03f;
+	HeightFog->FogDensity = 0.012f;
 	HeightFog->FogHeightFalloff = 0.2f; // halves every 50 m
 	HeightFog->bEnableVolumetricFog = true;
 	HeightFog->VolumetricFogScatteringDistribution = 0.75f; // strong forward scattering: god rays toward the sun
@@ -146,6 +154,10 @@ void AVoyagerSky::ApplyPlanet()
 	// Cloud layer altitudes are in km above the atmosphere's ground (world Z = 0).
 	Clouds->SetLayerBottomAltitude((GroundM + BaseM) / 1000.f);
 	Clouds->SetLayerHeight(FMath::Max(TopM - BaseM, 10.f) / 1000.f);
+	if (Planet && Planet->CloudMaterial)
+	{
+		Clouds->SetMaterial(Planet->CloudMaterial);
+	}
 
 	// Fog layers are measured from the fog component; keep it on the field.
 	HeightFog->SetWorldLocation(FVector(GetActorLocation().X, GetActorLocation().Y, GroundM * 100.f));

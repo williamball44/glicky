@@ -28,9 +28,9 @@ Unreal: X north, Y east, Z up, centimetres. Unity reference: x east, y up, z nor
 ## What exists
 ### C++ (`Source/`)
 - **`Voyager`** (runtime, primary game module; `LogVoyager`)
-  - `UVoyagerPlanetData` (`VoyagerPlanetData.h`): primary data asset per planet. Holds gravity, time rate, start hour, ground height, cloud base/top, space ceiling, fog density, morning mist, fog colour, sun tint, and space position/radius (used from step 6).
+  - `UVoyagerPlanetData` (`VoyagerPlanetData.h`): primary data asset per planet. Holds gravity, time rate, start hour, ground height, cloud base/top, space ceiling, fog density, morning mist, fog colour, sun tint, cloud material, and space position/radius (used from step 6).
   - `UVoyagerClockSubsystem` (`VoyagerClockSubsystem.h/.cpp`): game-instance subsystem, ticks home time. The home day is 24 real minutes; `LocalHour(planet)` = start hour + home hours × time rate. Also `FormatHour` and `SurfaceSunDirection(hour)`, a port of Unity's `GameClock.SurfaceSunDirection`: rises in the east, 62° peak toward the south at noon.
-  - `AVoyagerSky` (`VoyagerSky.h/.cpp`): one always-loaded actor per surface level that owns sun, moon (atmosphere light 1), Sky Atmosphere, real-time Sky Light, height fog with volumetric fog plus a second low "morning mist" layer peaking at 06:48, a Volumetric Cloud deck (altitudes from planet data), and an unbound post-process (bloom 0.6, vignette 0.3, slight saturation). Ticks in the editor as well. `EditorHour` previews the time of day and `bAnimateInEditor` runs the cycle; in game the hour comes from the clock subsystem. Sky colours come from the atmosphere simulation, not hand-painted gradients.
+  - `AVoyagerSky` (`VoyagerSky.h/.cpp`): one always-loaded actor per surface level that owns sun, moon (atmosphere light 1), Sky Atmosphere, real-time Sky Light, height fog with volumetric fog plus a second low "morning mist" layer peaking at 06:48, a Volumetric Cloud deck (altitudes and material from planet data; cloud shadow and sky AO limited to a 12 km extent at half resolution and samples, the measured 3.6 → 0.7 ms win; the moon casts no cloud shadow), and an unbound post-process (bloom 0.6, vignette 0.3, slight saturation). Ticks in the editor as well. `EditorHour` previews the time of day and `bAnimateInEditor` runs the cycle; in game the hour comes from the clock subsystem. Sky colours come from the atmosphere simulation, not hand-painted gradients.
   - `UVoyagerTerra` (`VoyagerTerra.h/.cpp`): Terra's height function, river curve, house and ship pads, ported one for one from Unity `HomeSurface.Height` / `RiverX` (Unity Perlin [0,1] mapped from `FMath::PerlinNoise2D`). Blueprint/Python: `TerrainHeight(XY)` and `RiverY(X)`.
 - **`VoyagerEditor`** (editor-only)
   - `UVoyagerTerraBuilder::BuildTerraLandscape(material, grid)`: samples `TerrainHeight` (ParallelFor) into a 4033² landscape: 32×32 components, 2×2 sections of 63 quads, 2 m spacing, 8.06 km square, centred on the origin. Z scale is chosen automatically (±585 m range → ScaleZ 240). Splits into World Partition streaming proxies (8×8 components each). Takes about 2 minutes including the save.
@@ -39,13 +39,15 @@ Unreal: X north, Y east, Z up, centimetres. Unity reference: x east, y up, z nor
 - `Maps/L_Terra`: World Partition level containing the VoyagerSky, Terra landscape and `PlayerStart_Meadow` (-25 m, 15 m, 23 m, yaw 70).
 - `Data/DA_Terra`: Terra planet data (start 07:36, fog 0.012, mist 0.05, ground 22 m, clouds 420–620 m).
 - `Materials/M_TerraPlaceholder`: temporary slope/noise ground material (replaced in step 3).
-- `Materials/MI_VoyagerClouds`: child of the engine's `m_SimpleVolumetricCloud_Inst`, tuned for the thin deck (coverage 0.15, density 0.03, layout scale 24 km). **It must be parented to the `_Inst`, not the base material**: the instance supplies the texture parameters, and without them no clouds render.
+- `Materials/MI_VoyagerClouds` (assigned through `DA_Terra.CloudMaterial`): child of the engine's `m_SimpleVolumetricCloud_Inst`, tuned for the thin deck (coverage 0.15, density 0.03, layout scale 24 km). **It must be parented to the `_Inst`, not the base material**: the instance supplies the texture parameters, and without them no clouds render.
 
 ### Tools (`Tools/`)
 - `ue_exec.py`: run Python in the open editor (`python Tools/ue_exec.py file.py` or `-c "code"`).
 - `build_terra.py`: (re)creates L_Terra, DA_Terra, the placeholder material, sky, landscape and clouds. Idempotent.
 - `terra_clouds.py`: creates/updates MI_VoyagerClouds and assigns it.
 - `capture.py`: decodes an MCP `CaptureViewport` result file into a PNG.
+- `gpu_passes.py`: prints the last `ProfileGPU` pass tree from the editor log.
+- `csv_summary.py`: summarises a CSV profiler capture (see Measuring).
 
 ### Config
 - Plugins: EnhancedInput, Water (+Landmass), PCG, PythonScriptPlugin, EditorScriptingUtilities, ModelingToolsEditorMode, ModelContextProtocol, AllToolsets.
@@ -54,7 +56,7 @@ Unreal: X north, Y east, Z up, centimetres. Unity reference: x east, y up, z nor
 
 ## Build order (from the owner's brief)
 1. ✅ Project setup.
-2. 🟡 Terra terrain, sky, sun, day/night, fog, clouds. Built and tuned; open items below.
+2. ✅ Terra terrain, sky, sun, day/night, fog, clouds. 102 fps at true 2560×1440. Night sky and space transition are deferred to step 6.
 3. Ground materials and the procedural grass plugin (RDG compute + indirect draw).
 4. Trees, rocks, flowers, pebbles, house, river.
 5. First-person player, ship flight, enter/exit, HUD.
@@ -63,25 +65,31 @@ Unreal: X north, Y east, Z up, centimetres. Unity reference: x east, y up, z nor
 8. Placeholder planets, gravity and time systems.
 
 ## Open
-- **True 1440p measurement isn't possible on this display.** A PIE "new window" at 2560×1440 is clamped to 1914×994. A standalone `-game -ResX=2560 -ResY=1440` launch hung before writing a log (probably a dialog from a second instance of the project). Options: run the standalone with the editor closed, or use `r.ScreenPercentage` emulation. Don't launch with Git Bash: it rewrites `/Game/...` arguments into Windows paths. Use PowerShell.
-- **Clouds are the biggest GPU cost** (3.7 ms of 8.8 ms scene). Try lower `ViewSampleCountScale`, a shorter `TracingMaxDistance` (50 km now; the landscape is only 8 km), and fewer cloud-shadow samples.
-- **The cloud material should move onto `UVoyagerPlanetData`** (a `CloudMaterial` field) so the C++ default isn't the engine instance, which shows nothing on a thin deck. Today it's set on the level's actor by `terra_clouds.py`.
+- **The frame is limited by the render thread, not the GPU** (9.8 ms vs 8.7 ms at 1440p). The likely cause is the non-Nanite landscape: 1024 components, plus the log warning "[VSM] Non-Nanite Marking Job Queue overflow". Enable Nanite on the landscape in step 3 (the brief asks for it anyway) and re-measure.
+- TSR is the largest GPU pass at 1440p (2.0 ms). It's expected and buys the upscale; revisit only if the GPU becomes the limit.
 - **No night sky.** Stars, the moon disk and nebulae come in step 6 (shared with space).
 - The space transition (atmosphere thinning above 620 m to 1500 m) is step 6.
 - The landscape edge at ±4 km is hidden by haze and hills from the ground, but visible from high altitude.
-- The C++ fog defaults changed to 0.012/0.05 and aren't compiled yet (they'll compile on the next restart). The level's data asset already holds these values.
 - **Command-line build** (only with the editor closed, since Live Coding blocks it):
   `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" glickEditor Win64 Development -Project="C:\Dev\Voyager\glick.uproject" -WaitMutex`
   Live Coding can't add modules or new UCLASSes. To restart the editor for a build: `unreal.SystemLibrary.quit_editor()` over `ue_exec.py`, build, then start `UnrealEditor.exe "C:\Dev\Voyager\glick.uproject"`.
 - The old copy at `C:\Users\wball\OneDrive\Documents\Unreal Projects\glick` can be deleted.
 
 ## Measuring (how to)
-- Console commands go through `ue_exec.py` → `unreal.SystemLibrary.execute_console_command(world, cmd)`. The PIE world is `UnrealEditorSubsystem.get_game_world()`.
-- Each baseline is `startfpschart`, about 15 s, `stopfpschart`, then `ProfileGPU`, read from `Saved/Logs/glick.log`.
+- **Real 1440p numbers (preferred):** close the editor, then in PowerShell (not Git Bash, which rewrites `/Game/...` into a Windows path):
+  `Start-Process "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" -ArgumentList '"C:\Dev\Voyager\glick.uproject" /Game/Voyager/Maps/L_Terra -game -windowed -ResX=2560 -ResY=1440 -ForceRes -csvCaptureFrames=2400 -csvExitOnCompletion -nosound -log=TerraBench.log -ExecCmds="t.MaxFPS 0,r.VSync 0,r.GPUCsvStatsEnabled 1"'`
+  - `-ForceRes` allows a window larger than the 1080p desktop.
+  - Standalone runs from the launcher engine write to `%LOCALAPPDATA%\UnrealEngine\5.8\Saved\` (logs and `Profiling\CSV\`), not the project's `Saved`.
+  - `-csvExitOnCompletion` doesn't close the window, so stop the process once the log shows "Capture Ended".
+  - The first run compiles game shaders (about 8 minutes); later runs are quick.
+  - Summarise with `python Tools/csv_summary.py "<Profile.csv>" 300` (skips 300 warm-up frames; prints frame/thread/GPU times, fps, 1% low and the top GPU passes).
+- **Quick A/B in the editor:** console commands go through `ue_exec.py` → `unreal.SystemLibrary.execute_console_command(world, cmd)` (the PIE world is `UnrealEditorSubsystem.get_game_world()`). Run `ProfileGPU`, then `python Tools/gpu_passes.py [min_ms] [filter]` to print the pass tree from `Saved/Logs/glick.log`. A PIE window is clamped to the 1080p desktop.
 - Screenshots go to `Saved/Screenshots/Voyager/` (not committed), via MCP `CaptureViewport` plus `Tools/capture.py`.
 
 ## Performance log
 | Step | Where | Res (render → output) | FPS | GPU | Game thread | Notes |
 |---|---|---|---|---|---|---|
 | 1 | Editor viewport, OpenWorld template, aerial | 1320×746 → 1526×862 (TSR) | 109.7 | 5.20 ms | 8.96 ms | Editor overhead dominates the game thread. 0 hitches. |
-| 2 | PIE window, Terra meadow 07:36, looking east toward the sun | 1439×748 → 1914×994 (TSR) | 72.9 | 11.5 ms (scene 8.8, editor Slate 1.0) | 13.2 ms | Clouds 3.7, post 1.5, lighting 0.7, shadow depths 0.65, volumetric fog 0.5, VSM page marking 0.3 ms. 0 hitches. No grass or props yet. |
+| 2 | PIE window, Terra meadow 07:36, looking east toward the sun | 1439×748 → 1914×994 (TSR) | 72.9 | 11.5 ms (scene 8.8, editor Slate 1.0) | 13.2 ms | Before cloud tuning. Clouds 3.7, post 1.5, lighting 0.7, shadow depths 0.65, volumetric fog 0.5 ms. |
+| 2 | Editor viewport A/B, same view | 1320×746 → 1526×862 | – | 9.4 → 7.1 ms | – | Cloud tuning: cloud shadow + sky AO 3.63 → 0.69 ms (extent 150 → 12 km, map res and ray samples ×0.5, no moon cloud shadow). |
+| 2 | **Standalone 2560×1440**, meadow start view, 2100 frames | 2560×1440 output (TSR) | **102.3** (1% low 81.6) | 8.66 ms (p95 9.35) | 2.46 ms | Render thread 9.77 ms is the limit; RHI thread 4.6 ms. GPU: TSR 2.0, deferred lighting 1.3, shadow depths 1.1, volumetric fog 0.76, cloud shadow 0.57 ms. |

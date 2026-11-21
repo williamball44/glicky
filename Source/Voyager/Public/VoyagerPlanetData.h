@@ -4,6 +4,8 @@
 #include "Engine/DataAsset.h"
 #include "VoyagerPlanetData.generated.h"
 
+class UMaterialInterface;
+
 UENUM(BlueprintType)
 enum class EVoyagerSurfaceKind : uint8
 {
@@ -74,6 +76,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Atmosphere")
 	FLinearColor SunTint = FLinearColor::White;
+
+	/**
+	 * Volumetric cloud material for the deck. Must suit a thin layer (CloudTop - CloudBase); the engine's
+	 * default instance is tuned for a multi-km layer and shows almost nothing here.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Atmosphere")
+	TObjectPtr<UMaterialInterface> CloudMaterial;
 
 	/** Position of the planet sphere in space (metres). Used from step 6. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Space")

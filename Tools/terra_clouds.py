@@ -26,3 +26,10 @@ eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 sky = [a for a in eas.get_all_level_actors() if isinstance(a, unreal.VoyagerSky)][0]
 sky.get_editor_property("clouds").set_material(mi)
 print("clouds ->", mi.get_path_name())
+
+# Planet data owns the cloud material so the sky picks it up on any level.
+da = eal.load_asset("/Game/Voyager/Data/DA_Terra")
+da.set_editor_property("cloud_material", mi)
+eal.save_loaded_asset(da)
+sky.apply_planet()
+print("DA_Terra.cloud_material set")
