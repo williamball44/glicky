@@ -6,7 +6,9 @@ Read this first. It covers what exists, how it fits together, the owner's workin
 | | |
 |---|---|
 | Engine | Unreal Engine 5.8 (launcher build, `C:\Program Files\Epic Games\UE_5.8`) |
+| Location | `C:\Dev\Voyager` (moved out of OneDrive; the old OneDrive copy is obsolete) |
 | Project file | `glick.uproject` (the file name is legacy; the game and C++ module are **Voyager**) |
+| Remote | `https://github.com/williamball44/glicky.git`, branch `main` |
 | Reference | Unity version at `C:\Users\wball\fart` (`HANDOFF.md`, `Assets/Voyager/`). Use it for behaviour and maths only; rebuild each system the Unreal way. |
 | Editor link | Unreal MCP over HTTP (`.mcp.json` → `http://127.0.0.1:8000/mcp`, plugins `ModelContextProtocol` + `AllToolsets`) |
 | Git | `main` branch, Git LFS for `.uasset`, `.umap`, textures, meshes and audio (`.gitattributes`). Binaries, Intermediate, Saved and DerivedDataCache are ignored. |
@@ -26,7 +28,7 @@ Read this first. It covers what exists, how it fits together, the owner's workin
 - **Content:** nothing yet.
 
 ## Build order (from the owner's brief)
-1. ✅ Project setup: module, plugins, git/LFS. *(Build verification and the first screenshot/perf baseline still pending, see Open.)*
+1. ✅ Project setup: module, plugins, git/LFS. Builds clean. *(The first screenshot/perf baseline is still pending, see Open.)*
 2. Terra terrain, sky, sun, day/night, fog, clouds.
 3. Ground materials and the procedural grass plugin (RDG compute + indirect draw).
 4. Trees, rocks, flowers, pebbles, house, river.
@@ -36,9 +38,8 @@ Read this first. It covers what exists, how it fits together, the owner's workin
 8. Placeholder planets, gravity and time systems.
 
 ## Open
-- **Build not yet verified.** The module was renamed `glick` → `Voyager` while the editor was running with Live Coding, so it couldn't be compiled. Close the editor, then build:
-  `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" glickEditor Win64 Development -Project="<path>\glick.uproject" -WaitMutex`
-  The old `UnrealEditor-glick.dll` in `Binaries/` is stale and can be deleted.
-- **No git remote yet.** Pushing to `main` needs a remote URL (GitHub CLI isn't installed).
-- **Project lives in OneDrive.** OneDrive syncing a UE project (2.7 GB Intermediate) and a `.git` folder causes file locks and corruption. Recommended: move it to a plain local folder such as `C:\Dev\Voyager` with the editor closed.
-- No baseline screenshot or performance numbers yet.
+- **Command-line build** (only with the editor closed, since Live Coding blocks it):
+  `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" glickEditor Win64 Development -Project="C:\Dev\Voyager\glick.uproject" -WaitMutex`
+  With the editor open, use Live Coding (Ctrl+Alt+F11) for .cpp-only changes.
+- No performance baseline yet: it needs the editor reopened with the Python plugin loaded.
+- The old copy at `C:\Users\wball\OneDrive\Documents\Unreal Projects\glick` can be deleted once the new location is confirmed working.
