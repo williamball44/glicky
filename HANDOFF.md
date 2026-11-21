@@ -41,5 +41,6 @@ Read this first. It covers what exists, how it fits together, the owner's workin
 - **Command-line build** (only with the editor closed, since Live Coding blocks it):
   `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" glickEditor Win64 Development -Project="C:\Dev\Voyager\glick.uproject" -WaitMutex`
   With the editor open, use Live Coding (Ctrl+Alt+F11) for .cpp-only changes.
-- No performance baseline yet: it needs the editor reopened with the Python plugin loaded.
+- **No performance baseline yet.** The MCP toolsets can't run console commands (`stat unit`, `stat gpu`, `ProfileGPU`, Insights traces). The plan is Python remote execution (Project Settings → Plugins → Python → Enable Remote Execution; it binds to 127.0.0.1 with TTL 0, so it's local only). Claude's auto-mode classifier blocked Claude from switching it on itself, so the owner has to tick it.
+- Screenshots go to `Saved/Screenshots/Voyager/` (not committed). Step 1 shows the unchanged OpenWorld template map.
 - The old copy at `C:\Users\wball\OneDrive\Documents\Unreal Projects\glick` can be deleted once the new location is confirmed working.
