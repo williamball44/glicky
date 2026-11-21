@@ -8,6 +8,6 @@ public class VoyagerEditor : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "Landscape", "Voyager" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "Landscape", "Voyager", "MeshDescription", "StaticMeshDescription", "AssetRegistry" });
 	}
 }

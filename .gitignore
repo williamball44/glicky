@@ -21,3 +21,4 @@ UpgradeLog*.htm
 # OS
 Thumbs.db
 .DS_Store
+Tools/out/
